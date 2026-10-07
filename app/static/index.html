@@ -1,0 +1,1114 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Face Finder - سیستم هوشمند حضور و غیاب کلاسی</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0fdf4',
+              500: '#22c55e',
+              600: '#16a34a',
+              700: '#15803d',
+            },
+            dark: {
+              bg: '#0f172a',
+              card: '#1e293b',
+              border: '#334155'
+            }
+          },
+          fontFamily: {
+            sans: ['Vazirmatn', 'Segoe UI', 'Roboto', 'sans-serif']
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Google Fonts Vazirmatn -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Alpine.js CDN -->
+  <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <style>
+    body { font-family: 'Vazirmatn', sans-serif; }
+    [x-cloak] { display: none !important; }
+    .glass-panel {
+      background: rgba(30, 41, 59, 0.7);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+    }
+  </style>
+</head>
+<body class="bg-[#0b1120] text-slate-100 min-h-screen flex flex-col" x-data="appData()" x-init="initApp()" x-cloak>
+
+  <!-- Top Navbar -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-400 flex items-center justify-center text-slate-950 font-bold shadow-lg shadow-emerald-500/20">
+          <i data-lucide="scan-face" class="w-6 h-6"></i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold bg-gradient-to-r from-emerald-400 to-teal-300 bg-clip-text text-transparent">Face Finder</h1>
+          <p class="text-xs text-slate-400">سامانه محلی و فوق‌سریع حضور و غیاب هوشمند (ArcFace + SCRFD)</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          پردازش ۱۰۰٪ محلی و امن
+        </span>
+        <button @click="openQuickHelp()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="help-circle" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col md:flex-row gap-6">
+
+    <!-- Sidebar Navigation -->
+    <aside class="w-full md:w-64 flex-shrink-0">
+      <nav class="space-y-1">
+        <template x-for="item in navItems" :key="item.id">
+          <button @click="currentTab = item.id"
+            :class="currentTab === item.id 
+              ? 'bg-emerald-600/20 text-emerald-300 border-r-4 border-emerald-500 font-semibold' 
+              : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'"
+            class="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm transition-all duration-150">
+            <i :data-lucide="item.icon" class="w-5 h-5"></i>
+            <span x-text="item.label"></span>
+            <span x-show="item.badge" class="mr-auto text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400" x-text="item.badge"></span>
+          </button>
+        </template>
+      </nav>
+
+      <!-- System Status Card -->
+      <div class="mt-6 p-4 rounded-xl border border-slate-800 bg-slate-900/50 text-xs space-y-2">
+        <div class="text-slate-400 font-medium flex items-center justify-between">
+          <span>شتاب‌دهنده سخت‌افزاری</span>
+          <span class="text-emerald-400 font-mono" x-text="hardwareInfo.gpu_acceleration_available ? 'GPU / DirectML' : 'CPU SIMD'"></span>
+        </div>
+        <div class="text-slate-400 font-medium flex items-center justify-between">
+          <span>آستانه تطبیق فعال</span>
+          <span class="text-teal-400 font-mono" x-text="(activeSettings.match_threshold || 0.50).toFixed(2)"></span>
+        </div>
+        <div class="text-slate-400 font-medium flex items-center justify-between">
+          <span>موتور هوش مصنوعی</span>
+          <span class="text-slate-300">SCRFD + ArcFace</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 min-w-0">
+
+      <!-- ============================================================ -->
+      <!-- TAB 1: DASHBOARD -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'dashboard'" class="space-y-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white">داشبورد مدیریت حضور و غیاب</h2>
+          <p class="text-sm text-slate-400">نمای کلی وضعیت دانشجویان و آخرین جلسه ثبت‌شده کلاسی</p>
+        </div>
+
+        <!-- Metric Stat Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">کل دانشجویان</span>
+              <div class="p-2 bg-blue-500/10 text-blue-400 rounded-lg"><i data-lucide="users" class="w-5 h-5"></i></div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+              <span class="text-3xl font-extrabold text-white" x-text="dashboard.total_students || 0"></span>
+              <span class="text-xs text-slate-500">نفر</span>
+            </div>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">حاضرین آخرین جلسه</span>
+              <div class="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg"><i data-lucide="user-check" class="w-5 h-5"></i></div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+              <span class="text-3xl font-extrabold text-emerald-400" x-text="dashboard.last_session?.present_count || 0"></span>
+              <span class="text-xs text-slate-500">دانشجو</span>
+            </div>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">غایبین آخرین جلسه</span>
+              <div class="p-2 bg-rose-500/10 text-rose-400 rounded-lg"><i data-lucide="user-x" class="w-5 h-5"></i></div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+              <span class="text-3xl font-extrabold text-rose-400" x-text="dashboard.last_session?.absent_count || 0"></span>
+              <span class="text-xs text-slate-500">دانشجو</span>
+            </div>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-slate-400">افراد ناشناس / نامطمئن</span>
+              <div class="p-2 bg-amber-500/10 text-amber-400 rounded-lg"><i data-lucide="help-circle" class="w-5 h-5"></i></div>
+            </div>
+            <div class="mt-2 flex items-baseline gap-2">
+              <span class="text-3xl font-extrabold text-amber-400" x-text="(dashboard.last_session?.unknown_count || 0) + (dashboard.last_session?.uncertain_count || 0)"></span>
+              <span class="text-xs text-slate-500">چهره</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Latest Session Detail Card -->
+        <div class="glass-panel p-6 rounded-2xl space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div>
+              <h3 class="text-lg font-semibold text-white">آخرین جلسه حضور و غیاب کلاسی</h3>
+              <p class="text-xs text-slate-400" x-text="dashboard.last_session ? (dashboard.last_session.session_name + ' — ' + formatDateTime(dashboard.last_session.timestamp)) : 'هیچ جلسه‌ای تاکنون ثبت نشده است'"></p>
+            </div>
+            <button x-show="dashboard.last_session" @click="viewSession(dashboard.last_session.id)" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-lg text-emerald-400 transition flex items-center gap-1.5">
+              مشاهده گزارش کامل
+              <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <div x-show="!dashboard.last_session" class="py-12 text-center text-slate-500 space-y-3">
+            <i data-lucide="calendar" class="w-12 h-12 mx-auto stroke-1 opacity-50"></i>
+            <p>هنوز عکس کلاسی پردازش نشده است. برای ثبت اولین جلسه به بخش «حضور و غیاب» بروید.</p>
+            <button @click="currentTab = 'attendance'" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold transition">
+              شروع حضور و غیاب کلاسی
+            </button>
+          </div>
+
+          <div x-show="dashboard.last_session" class="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+            <div class="relative rounded-xl overflow-hidden border border-slate-800 bg-slate-950 aspect-video flex items-center justify-center">
+              <img x-show="dashboard.last_session?.annotated_image_url" :src="dashboard.last_session?.annotated_image_url" alt="Annotated Classroom" class="w-full h-full object-cover">
+              <span x-show="!dashboard.last_session?.annotated_image_url" class="text-xs text-slate-500">تصویر در دسترس نیست</span>
+            </div>
+            <div class="space-y-3 text-sm">
+              <div class="flex justify-between py-2 border-b border-slate-800">
+                <span class="text-slate-400">تعداد کل چهره‌های کشف‌شده:</span>
+                <span class="font-bold text-white" x-text="dashboard.last_session?.total_detected_faces"></span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-slate-800">
+                <span class="text-slate-400">درصد حضور در کلاس:</span>
+                <span class="font-bold text-emerald-400" x-text="calculateAttendancePercent(dashboard.last_session) + '%'"></span>
+              </div>
+              <div class="flex justify-between py-2 border-b border-slate-800">
+                <span class="text-slate-400">آستانه شباهت به‌کار رفته:</span>
+                <span class="font-mono text-teal-400" x-text="dashboard.last_session?.match_threshold_used"></span>
+              </div>
+              <div class="flex justify-between py-2">
+                <span class="text-slate-400">شناسایی‌های نامطمئن / مشکوک:</span>
+                <span class="font-bold text-amber-400" x-text="dashboard.last_session?.uncertain_count || 0"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- TAB 2: STUDENTS LIST -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'students'" class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white">بانک اطلاعات دانشجویان</h2>
+            <p class="text-sm text-slate-400">مدیریت تصاویر مرجع و امضاهای بیومتریک ۵۱۲ بعدی ArcFace</p>
+          </div>
+          <button @click="currentTab = 'add_student'" class="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-semibold flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition">
+            <i data-lucide="user-plus" class="w-4 h-4"></i>
+            افزودن دانشجوی جدید
+          </button>
+        </div>
+
+        <!-- Student Cards Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <template x-for="st in studentsList" :key="st.id">
+            <div class="glass-panel rounded-2xl p-4 flex flex-col justify-between border border-slate-800 hover:border-slate-700 transition">
+              <div class="flex items-start gap-4">
+                <div class="w-16 h-16 rounded-xl bg-slate-800 border border-slate-700 overflow-hidden flex-shrink-0 flex items-center justify-center">
+                  <img x-show="st.preview_image" :src="'/' + st.preview_image" alt="Profile" class="w-full h-full object-cover">
+                  <i x-show="!st.preview_image" data-lucide="user" class="w-8 h-8 text-slate-600"></i>
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h4 class="font-bold text-white truncate" x-text="st.name"></h4>
+                  <p class="text-xs text-slate-400 font-mono mt-0.5" x-text="'شماره دانشجویی: ' + st.student_number"></p>
+                  <div class="mt-2 flex items-center gap-2">
+                    <span class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-emerald-400 border border-emerald-500/20" x-text="st.image_count + ' تصویر مرجع'"></span>
+                    <span x-show="st.has_consent" class="text-xs text-emerald-500 flex items-center gap-1" title="رضایت‌نامه بیومتریک تایید شده">
+                      <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between">
+                <button @click="openUploadModal(st)" class="text-xs text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1">
+                  <i data-lucide="image-plus" class="w-3.5 h-3.5"></i>
+                  افزودن عکس جدید
+                </button>
+                <button @click="deleteStudent(st.id, st.name)" class="text-xs text-rose-400 hover:text-rose-300 font-medium flex items-center gap-1">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  حذف کامل
+                </button>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div x-show="studentsList.length === 0" class="py-16 text-center text-slate-500 glass-panel rounded-2xl space-y-3">
+          <i data-lucide="users" class="w-12 h-12 mx-auto stroke-1 opacity-50"></i>
+          <p>هیچ دانشجویی هنوز ثبت نشده است.</p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- TAB 3: ADD STUDENT -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'add_student'" class="space-y-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white">ثبت دانشجوی جدید و الصاق عکس مرجع</h2>
+          <p class="text-sm text-slate-400">امکان ثبت تک‌عکس یا چند عکس از زوایای مختلف جهت ارتقای دقت تطبیق</p>
+        </div>
+
+        <div class="glass-panel p-6 rounded-2xl max-w-2xl space-y-5">
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-300">نام و نام خانوادگی کامل</label>
+            <input type="text" x-model="newStudent.name" placeholder="مثال: علی رضایی" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-emerald-500 focus:outline-none">
+          </div>
+
+          <div class="space-y-1">
+            <label class="text-xs font-semibold text-slate-300">شماره دانشجویی / کد پرسنلی</label>
+            <input type="text" x-model="newStudent.student_number" placeholder="مثال: 401123456" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm font-mono focus:border-emerald-500 focus:outline-none">
+          </div>
+
+          <!-- Biometric Consent Checkbox -->
+          <div class="p-4 rounded-xl bg-slate-900/60 border border-slate-800 flex items-start gap-3">
+            <input type="checkbox" id="consent_chk" x-model="newStudent.has_consent" class="mt-1 w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500">
+            <label for="consent_chk" class="text-xs text-slate-300 leading-relaxed cursor-pointer">
+              <strong>رضایت‌نامه پردازش بیومتریک آموزشی:</strong> دانشجو رضایت خود را برای استخراج ویژگی‌های چهره صرفاً جهت حضور و غیاب محلی کلاسی اعلام نموده است و آگاه است که داده‌ها هرگز به سرویس شخص ثالث یا Cloud ارسال نمی‌شوند.
+            </label>
+          </div>
+
+          <div class="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+            <button @click="currentTab = 'students'" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium transition">
+              انصراف
+            </button>
+            <button @click="saveNewStudent()" :disabled="!newStudent.name || !newStudent.student_number || !newStudent.has_consent || loading" class="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold shadow-lg shadow-emerald-600/20 transition flex items-center gap-2">
+              <span x-show="loading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+              ثبت و ادامه به افزودن عکس
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- TAB 4: ATTENDANCE (CORE) -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'attendance'" class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white">ثبت حضور و غیاب کلاسی هوشمند</h2>
+            <p class="text-sm text-slate-400">عکس کلی کلاس را آپلود کنید تا سیستم چهره‌ها را کشف، تراز و تطبیق دهد</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <button @click="toggleWebcam()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 border border-slate-700 transition">
+              <i data-lucide="camera" class="w-4 h-4 text-emerald-400"></i>
+              <span x-text="webcamActive ? 'بستن وب‌کم' : 'عکسبرداری زنده با وب‌کم'"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Input Parameters & Drag/Drop Card -->
+        <div class="glass-panel p-6 rounded-2xl space-y-6">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-slate-300">عنوان جلسه / درس</label>
+              <input type="text" x-model="attendanceForm.session_name" class="w-full px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:border-emerald-500 focus:outline-none">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-slate-300">
+                آستانه پذیرش تطبیق (Match Threshold): <span class="text-emerald-400 font-mono" x-text="attendanceForm.match_threshold"></span>
+              </label>
+              <input type="range" min="0.30" max="0.75" step="0.02" x-model="attendanceForm.match_threshold" class="w-full accent-emerald-500">
+            </div>
+            <div class="space-y-1">
+              <label class="text-xs font-semibold text-slate-300">
+                حاشیه ابهام (Ambiguity Margin): <span class="text-teal-400 font-mono" x-text="attendanceForm.ambiguity_margin"></span>
+              </label>
+              <input type="range" min="0.02" max="0.20" step="0.01" x-model="attendanceForm.ambiguity_margin" class="w-full accent-teal-500">
+            </div>
+          </div>
+
+          <!-- Live Webcam Feed (If Active) -->
+          <div x-show="webcamActive" class="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3 text-center">
+            <video id="webcam_video" autoplay playsinline class="mx-auto rounded-lg max-h-80 w-auto border border-slate-700"></video>
+            <div class="flex justify-center gap-3">
+              <button @click="captureWebcamPhoto()" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-2">
+                <i data-lucide="camera" class="w-4 h-4"></i>
+                ثبت فریم جاری و پردازش
+              </button>
+              <button @click="toggleWebcam()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium">
+                بستن
+              </button>
+            </div>
+          </div>
+
+          <!-- Drag & Drop Zone -->
+          <div x-show="!webcamActive"
+               @dragover.prevent="dragOver = true"
+               @dragleave.prevent="dragOver = false"
+               @drop.prevent="handleClassroomDrop($event)"
+               :class="dragOver ? 'border-emerald-500 bg-emerald-500/10' : 'border-slate-700 bg-slate-900/40 hover:border-slate-600'"
+               class="border-2 border-dashed rounded-2xl p-8 text-center transition cursor-pointer"
+               @click="$refs.classroomInput.click()">
+            <input type="file" x-ref="classroomInput" @change="handleClassroomFile($event)" accept="image/*" class="hidden">
+            <div class="space-y-3">
+              <div class="w-14 h-14 mx-auto rounded-full bg-slate-800 flex items-center justify-center text-emerald-400">
+                <i data-lucide="upload-cloud" class="w-7 h-7"></i>
+              </div>
+              <div>
+                <p class="text-sm font-semibold text-white">تصویر جمعی کلاس را اینجا رها کنید، یا کلیک کنید</p>
+                <p class="text-xs text-slate-400 mt-1">فرمت‌های مجاز: JPG, PNG, WEBP (حاوی چهره‌های دانشجویان حاضر)</p>
+              </div>
+              <div x-show="selectedClassroomFile" class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-mono">
+                <i data-lucide="file-image" class="w-4 h-4"></i>
+                <span x-text="selectedClassroomFile?.name"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Submit Process Button -->
+          <div class="flex justify-end">
+            <button @click="runAttendanceProcess()" :disabled="!selectedClassroomFile || loading" class="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-bold shadow-lg shadow-emerald-600/25 transition flex items-center gap-2">
+              <span x-show="loading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+              <i x-show="!loading" data-lucide="sparkles" class="w-4 h-4"></i>
+              پردازش حضور و غیاب و تطبیق بیومتریک
+            </button>
+          </div>
+        </div>
+
+        <!-- Attendance Results Section (Appears after evaluation) -->
+        <div x-show="attendanceResult" class="space-y-6">
+          <!-- Summary Header -->
+          <div class="glass-panel p-6 rounded-2xl flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                نتیجه نهایی حضور و غیاب
+                <span class="text-xs px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 font-mono" x-text="'جلسه #' + attendanceResult?.session_id"></span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-1">تطبیق یکپارچه و بهینه بر اساس الگوریتم مجارستانی (Hungarian Bipartite Matching)</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <a :href="'/api/attendance/sessions/' + attendanceResult?.session_id + '/export?format=excel'" target="_blank" class="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-600 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                خروجی اکسل
+              </a>
+              <a :href="'/api/attendance/sessions/' + attendanceResult?.session_id + '/export?format=csv'" target="_blank" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+                خروجی CSV
+              </a>
+            </div>
+          </div>
+
+          <!-- Annotated Image Viewer -->
+          <div class="glass-panel p-4 rounded-2xl space-y-3">
+            <h4 class="text-sm font-bold text-white flex items-center gap-2">
+              <i data-lucide="eye" class="w-4 h-4 text-emerald-400"></i>
+              تصویر پردازش‌شده کلاس همراه با کادربندی Bounding Box و برچسب‌های تشخیصی
+            </h4>
+            <div class="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-800">
+              <img :src="attendanceResult?.annotated_image_url" alt="Annotated Classroom" class="w-full h-auto object-contain max-h-[600px] mx-auto">
+            </div>
+            <div class="flex items-center justify-center gap-6 text-xs text-slate-400 pt-2">
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-[#2ecc71]"></span> حاضر قطعی (سبز)</span>
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-[#ffa500]"></span> نامطمئن / نیازمند بررسی (نارنجی)</span>
+              <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-[#e63c3c]"></span> ناشناس / خارج از بانک (قرمز)</span>
+            </div>
+          </div>
+
+          <!-- Structured Tables (Present, Absent, Uncertain, Unknown) -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- 1. PRESENT STUDENTS -->
+            <div class="glass-panel rounded-2xl overflow-hidden border border-emerald-500/30">
+              <div class="px-5 py-3.5 bg-emerald-500/10 border-b border-emerald-500/20 flex items-center justify-between">
+                <h4 class="font-bold text-emerald-400 text-sm flex items-center gap-2">
+                  <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                  دانشجویان حاضر (Present)
+                </h4>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300" x-text="attendanceResult?.present_count + ' نفر'"></span>
+              </div>
+              <div class="p-2 overflow-x-auto">
+                <table class="w-full text-xs text-right">
+                  <thead class="text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th class="p-2.5">نام دانشجو</th>
+                      <th class="p-2.5">شماره دانشجویی</th>
+                      <th class="p-2.5">درصد اطمینان</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template x-for="p in attendanceResult?.present" :key="p.student_id">
+                      <tr class="hover:bg-slate-800/40">
+                        <td class="p-2.5 font-semibold text-white" x-text="p.name"></td>
+                        <td class="p-2.5 font-mono text-slate-300" x-text="p.student_number"></td>
+                        <td class="p-2.5 font-mono font-bold text-emerald-400" x-text="(p.confidence * 100).toFixed(1) + '%'"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="attendanceResult?.present.length === 0">
+                      <td colspan="3" class="p-4 text-center text-slate-500">هیچ دانشجویی به عنوان حاضر شناسایی نشد.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 2. ABSENT STUDENTS -->
+            <div class="glass-panel rounded-2xl overflow-hidden border border-rose-500/30">
+              <div class="px-5 py-3.5 bg-rose-500/10 border-b border-rose-500/20 flex items-center justify-between">
+                <h4 class="font-bold text-rose-400 text-sm flex items-center gap-2">
+                  <i data-lucide="x-circle" class="w-4 h-4"></i>
+                  دانشجویان غایب (Absent)
+                </h4>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-rose-500/20 text-rose-300" x-text="attendanceResult?.absent_count + ' نفر'"></span>
+              </div>
+              <div class="p-2 overflow-x-auto">
+                <table class="w-full text-xs text-right">
+                  <thead class="text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th class="p-2.5">نام دانشجو</th>
+                      <th class="p-2.5">شماره دانشجویی</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template x-for="a in attendanceResult?.absent" :key="a.student_id">
+                      <tr class="hover:bg-slate-800/40">
+                        <td class="p-2.5 font-semibold text-slate-200" x-text="a.name"></td>
+                        <td class="p-2.5 font-mono text-slate-400" x-text="a.student_number"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="attendanceResult?.absent.length === 0">
+                      <td colspan="2" class="p-4 text-center text-slate-500">همه دانشجویان حاضر بودند.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 3. UNCERTAIN / LOW CONFIDENCE -->
+            <div class="glass-panel rounded-2xl overflow-hidden border border-amber-500/30">
+              <div class="px-5 py-3.5 bg-amber-500/10 border-b border-amber-500/20 flex items-center justify-between">
+                <h4 class="font-bold text-amber-400 text-sm flex items-center gap-2">
+                  <i data-lucide="alert-triangle" class="w-4 h-4"></i>
+                  اطمینان پایین یا نامطمئن (Uncertain)
+                </h4>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-300" x-text="attendanceResult?.uncertain_count + ' چهره'"></span>
+              </div>
+              <div class="p-2 overflow-x-auto">
+                <table class="w-full text-xs text-right">
+                  <thead class="text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th class="p-2.5">نامزد احتمالی</th>
+                      <th class="p-2.5">شباهت</th>
+                      <th class="p-2.5">علت عدم تایید قطعی</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template x-for="u in attendanceResult?.uncertain" :key="u.face_index">
+                      <tr class="hover:bg-slate-800/40">
+                        <td class="p-2.5 font-semibold text-white" x-text="u.name || 'نامشخص'"></td>
+                        <td class="p-2.5 font-mono text-amber-400" x-text="(u.confidence * 100).toFixed(1) + '%'"></td>
+                        <td class="p-2.5 text-slate-400" x-text="u.reason"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="attendanceResult?.uncertain.length === 0">
+                      <td colspan="3" class="p-4 text-center text-slate-500">مورد نامطمئنی وجود ندارد.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- 4. UNKNOWN INDIVIDUALS -->
+            <div class="glass-panel rounded-2xl overflow-hidden border border-red-500/30">
+              <div class="px-5 py-3.5 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between">
+                <h4 class="font-bold text-red-400 text-sm flex items-center gap-2">
+                  <i data-lucide="user-question" class="w-4 h-4"></i>
+                  افراد ناشناس در تصویر (Unknown)
+                </h4>
+                <span class="px-2 py-0.5 rounded-full text-xs font-bold bg-red-500/20 text-red-300" x-text="attendanceResult?.unknown_count + ' چهره'"></span>
+              </div>
+              <div class="p-2 overflow-x-auto">
+                <table class="w-full text-xs text-right">
+                  <thead class="text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th class="p-2.5">شماره چهره</th>
+                      <th class="p-2.5">بیشترین شباهت به بانک</th>
+                      <th class="p-2.5">علت</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800/60">
+                    <template x-for="unk in attendanceResult?.unknown" :key="unk.face_index">
+                      <tr class="hover:bg-slate-800/40">
+                        <td class="p-2.5 font-semibold text-slate-300" x-text="'چهره #' + (unk.face_index + 1)"></td>
+                        <td class="p-2.5 font-mono text-red-400" x-text="(unk.best_similarity * 100).toFixed(1) + '%'"></td>
+                        <td class="p-2.5 text-slate-400" x-text="unk.reason"></td>
+                      </tr>
+                    </template>
+                    <tr x-show="attendanceResult?.unknown.length === 0">
+                      <td colspan="3" class="p-4 text-center text-slate-500">فرد ناشناسی در تصویر دیده نشد.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- TAB 5: ATTENDANCE HISTORY -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'history'" class="space-y-6">
+        <div class="flex items-center justify-between">
+          <div>
+            <h2 class="text-2xl font-bold text-white">تاریخچه و لاگ جلسات گذشته</h2>
+            <p class="text-sm text-slate-400">مرور تصاویر پردازش‌شده، آمار حاضر/غایب، و دریافت خروجی اکسل/CSV</p>
+          </div>
+          <button @click="loadSessions()" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <div class="glass-panel rounded-2xl overflow-hidden">
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs text-right">
+              <thead class="text-slate-400 bg-slate-900/60 border-b border-slate-800">
+                <tr>
+                  <th class="p-3.5">عنوان جلسه</th>
+                  <th class="p-3.5">تاریخ و ساعت</th>
+                  <th class="p-3.5">کل چهره‌ها</th>
+                  <th class="p-3.5">حاضر</th>
+                  <th class="p-3.5">غایب</th>
+                  <th class="p-3.5">ناشناس</th>
+                  <th class="p-3.5 text-center">عملیات</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800">
+                <template x-for="s in sessionsList" :key="s.id">
+                  <tr class="hover:bg-slate-800/40">
+                    <td class="p-3.5 font-semibold text-white" x-text="s.session_name"></td>
+                    <td class="p-3.5 text-slate-400 font-mono" x-text="formatDateTime(s.timestamp)"></td>
+                    <td class="p-3.5 font-bold text-slate-300" x-text="s.total_detected_faces"></td>
+                    <td class="p-3.5 font-bold text-emerald-400" x-text="s.present_count"></td>
+                    <td class="p-3.5 font-bold text-rose-400" x-text="s.absent_count"></td>
+                    <td class="p-3.5 font-bold text-amber-400" x-text="s.unknown_count + s.uncertain_count"></td>
+                    <td class="p-3.5 text-center flex items-center justify-center gap-2">
+                      <a :href="'/api/attendance/sessions/' + s.id + '/export?format=excel'" target="_blank" class="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded-lg" title="خروجی اکسل">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                      </a>
+                      <button @click="deleteSession(s.id)" class="p-1.5 text-rose-400 hover:bg-rose-500/10 rounded-lg" title="حذف جلسه">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                      </button>
+                    </td>
+                  </tr>
+                </template>
+                <tr x-show="sessionsList.length === 0">
+                  <td colspan="7" class="p-8 text-center text-slate-500">هیچ سابقه جلسه‌ای ثبت نشده است.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <!-- TAB 6: SETTINGS & BENCHMARK -->
+      <!-- ============================================================ -->
+      <section x-show="currentTab === 'settings'" class="space-y-6">
+        <div>
+          <h2 class="text-2xl font-bold text-white">تنظیمات سیستم و کالیبراسیون آستانه (Threshold)</h2>
+          <p class="text-sm text-slate-400">تنظیم دقیق بالانس False Positive و False Negative و ارزیابی بنچ‌مارک دقت</p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+          <!-- Parameters Setting Card -->
+          <div class="glass-panel p-6 rounded-2xl space-y-5">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="sliders" class="w-5 h-5 text-emerald-400"></i>
+              پارامترهای تطبیق بیومتریک و فیلترهای کیفیت
+            </h3>
+
+            <!-- Match Threshold Slider -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-semibold text-slate-200">آستانه شباهت تطبیق (Match Threshold)</span>
+                <span class="font-mono text-emerald-400 font-bold text-sm" x-text="activeSettings.match_threshold"></span>
+              </div>
+              <input type="range" min="0.30" max="0.80" step="0.02" x-model.number="activeSettings.match_threshold" class="w-full accent-emerald-500">
+              <div class="p-3 rounded-xl bg-slate-900 text-xs text-slate-400 space-y-1">
+                <p><strong>تاثیر افزایش:</strong> کاهش شدید خطای پذیرش اشتباه (False Positive)؛ اما ریسک رد شدن افراد حاضر با تغییر زاویه (False Negative) بیشتر می‌شود.</p>
+                <p><strong>تاثیر کاهش:</strong> افزایش شناسایی (Recall) در نور ضعیف یا زاویه، اما ریسک نسبت دادن فرد به شخص دیگر بالا می‌رود.</p>
+              </div>
+            </div>
+
+            <!-- Ambiguity Margin Slider -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-semibold text-slate-200">حاشیه تفکیک ابهام (Ambiguity Margin)</span>
+                <span class="font-mono text-teal-400 font-bold text-sm" x-text="activeSettings.ambiguity_margin"></span>
+              </div>
+              <input type="range" min="0.02" max="0.25" step="0.01" x-model.number="activeSettings.ambiguity_margin" class="w-full accent-teal-500">
+              <p class="text-xs text-slate-500">اگر فاصله شباهت رتبه اول با رتبه دوم از این مقدار کمتر باشد، وضعیت نامطمئن (Uncertain) اعلام می‌شود.</p>
+            </div>
+
+            <!-- Min Face Size Slider -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-semibold text-slate-200">حداقل ابعاد چهره معتبر (Pixels)</span>
+                <span class="font-mono text-blue-400 font-bold text-sm" x-text="activeSettings.min_face_size + ' px'"></span>
+              </div>
+              <input type="range" min="20" max="100" step="2" x-model.number="activeSettings.min_face_size" class="w-full accent-blue-500">
+              <p class="text-xs text-slate-500">چهره‌های کوچکتر از این ابعاد به دلیل فقدان اطلاعات فرکانسی بیومتریک فیلتر می‌شوند.</p>
+            </div>
+
+            <!-- Blur Score Slider -->
+            <div class="space-y-2">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-semibold text-slate-200">آستانه تاری تصویر (Laplacian Blur Score)</span>
+                <span class="font-mono text-amber-400 font-bold text-sm" x-text="activeSettings.min_blur_score"></span>
+              </div>
+              <input type="range" min="20" max="120" step="5" x-model.number="activeSettings.min_blur_score" class="w-full accent-amber-500">
+              <p class="text-xs text-slate-500">چهره‌هایی با واریانس لاپلاسین کمتر از این مقدار به عنوان تار/مات تلقی می‌شوند.</p>
+            </div>
+
+            <div class="pt-3 border-t border-slate-800 flex justify-end">
+              <button @click="saveSettings()" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5">
+                <i data-lucide="check" class="w-4 h-4"></i>
+                ذخیره تنظیمات
+              </button>
+            </div>
+          </div>
+
+          <!-- Benchmark Evaluation Card -->
+          <div class="glass-panel p-6 rounded-2xl space-y-5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-base font-bold text-white flex items-center gap-2">
+                <i data-lucide="activity" class="w-5 h-5 text-teal-400"></i>
+                ارزیابی دقت و بنچ‌مارک (ROC & Metrics)
+              </h3>
+              <button @click="runBenchmarkTest()" :disabled="benchmarkLoading" class="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold transition flex items-center gap-1.5">
+                <span x-show="benchmarkLoading" class="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+                اجرای بنچ‌مارک
+              </button>
+            </div>
+
+            <div x-show="!benchmarkResult" class="py-12 text-center text-slate-500 text-xs space-y-2">
+              <i data-lucide="bar-chart-2" class="w-10 h-10 mx-auto stroke-1 opacity-50"></i>
+              <p>جهت محاسبه Precision، Recall، FPR و FNR بر روی دکمه اجرای بنچ‌مارک کلیک کنید.</p>
+            </div>
+
+            <div x-show="benchmarkResult && benchmarkResult.status === 'success'" class="space-y-4">
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                <div class="p-3 bg-slate-900 rounded-xl">
+                  <div class="text-slate-400 text-xs">Accuracy</div>
+                  <div class="text-lg font-bold text-emerald-400 font-mono" x-text="benchmarkResult?.current_threshold_metrics?.accuracy + '%'"></div>
+                </div>
+                <div class="p-3 bg-slate-900 rounded-xl">
+                  <div class="text-slate-400 text-xs">Precision</div>
+                  <div class="text-lg font-bold text-teal-400 font-mono" x-text="benchmarkResult?.current_threshold_metrics?.precision + '%'"></div>
+                </div>
+                <div class="p-3 bg-slate-900 rounded-xl">
+                  <div class="text-slate-400 text-xs">Recall</div>
+                  <div class="text-lg font-bold text-blue-400 font-mono" x-text="benchmarkResult?.current_threshold_metrics?.recall + '%'"></div>
+                </div>
+                <div class="p-3 bg-slate-900 rounded-xl">
+                  <div class="text-slate-400 text-xs">False Positive</div>
+                  <div class="text-lg font-bold text-rose-400 font-mono" x-text="benchmarkResult?.current_threshold_metrics?.fpr + '%'"></div>
+                </div>
+              </div>
+
+              <div class="text-xs text-slate-400 flex justify-between items-center bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                <span>بهترین آستانه پیشنهادی F1:</span>
+                <span class="font-mono font-bold text-emerald-400 text-sm" x-text="benchmarkResult?.optimal_threshold"></span>
+              </div>
+
+              <!-- Sweep Table -->
+              <div class="max-h-48 overflow-y-auto rounded-xl border border-slate-800 text-xs">
+                <table class="w-full text-right">
+                  <thead class="bg-slate-900 text-slate-400 sticky top-0">
+                    <tr>
+                      <th class="p-2">Threshold</th>
+                      <th class="p-2">Precision</th>
+                      <th class="p-2">Recall</th>
+                      <th class="p-2">F1</th>
+                      <th class="p-2">FPR</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-800">
+                    <template x-for="sw in benchmarkResult?.threshold_sweep" :key="sw.threshold">
+                      <tr :class="sw.threshold === activeSettings.match_threshold ? 'bg-emerald-500/10 font-bold' : ''">
+                        <td class="p-2 font-mono" x-text="sw.threshold"></td>
+                        <td class="p-2 font-mono text-teal-400" x-text="sw.precision + '%'"></td>
+                        <td class="p-2 font-mono text-blue-400" x-text="sw.recall + '%'"></td>
+                        <td class="p-2 font-mono text-emerald-400" x-text="sw.f1_score + '%'"></td>
+                        <td class="p-2 font-mono text-rose-400" x-text="sw.fpr + '%'"></td>
+                      </tr>
+                    </template>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div x-show="benchmarkResult && benchmarkResult.status !== 'success'" class="p-4 rounded-xl bg-amber-500/10 text-amber-300 text-xs border border-amber-500/20">
+              <span x-text="benchmarkResult?.message"></span>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- Upload Reference Photo Modal -->
+  <div x-show="uploadModalOpen" class="fixed inset-0 bg-slate-950/80 backdrop-blur z-50 flex items-center justify-center p-4">
+    <div class="glass-panel p-6 rounded-2xl max-w-md w-full space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h4 class="font-bold text-white text-sm" x-text="'افزودن عکس مرجع برای ' + targetStudent?.name"></h4>
+        <button @click="uploadModalOpen = false" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+
+      <div class="space-y-3">
+        <p class="text-xs text-slate-400 leading-relaxed">
+          یک عکس پرسنلی یا روبروی واضح با زاویه دید مستقیم و نور مناسب انتخاب کنید. سیستم به صورت خودکار چهره را یافته و تراز می‌کند.
+        </p>
+
+        <input type="file" x-ref="refImageInput" accept="image/*" class="w-full text-xs text-slate-300 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-500 cursor-pointer">
+      </div>
+
+      <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+        <button @click="uploadModalOpen = false" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-medium">انصراف</button>
+        <button @click="submitReferenceImage()" :disabled="loading" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center gap-1.5">
+          <span x-show="loading" class="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full"></span>
+          آپلود و استخراج ویژگی
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick Help Modal -->
+  <div x-show="helpModalOpen" class="fixed inset-0 bg-slate-950/80 backdrop-blur z-50 flex items-center justify-center p-4">
+    <div class="glass-panel p-6 rounded-2xl max-w-lg w-full space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h4 class="font-bold text-white text-base">راهنمای سامانه هوشمند Face Finder</h4>
+        <button @click="helpModalOpen = false" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="text-xs text-slate-300 space-y-3 leading-relaxed">
+        <p><strong>۱. معماری بیومتریک:</strong> این سیستم از آشکارساز SCRFD برای کشف چهره‌ها و تراز ۵ نقطه‌ای (Umeyama)، و از شبکه عمیق ArcFace برای استخراج ویژگی‌های ۵۱۲ بعدی استفاده می‌کند.</p>
+        <p><strong>۲. حل مسأله تطبیق کلاس:</strong> برخلاف سیستم‌های عادی، این سامانه از الگوریتم مجارستانی (Hungarian Bipartite Matching) بهره می‌برد تا تضمین کند هیچ دو چهره‌ای به یک دانشجو و هیچ دو دانشجویی به یک چهره منتسب نشوند.</p>
+        <p><strong>۳. حریم خصوصی محلی:</strong> تمامی پردازش‌ها به صورت کاملاً On-device انجام شده و قابلیت حذف کامل (Hard-delete) داده‌های بیومتریک طبق اصول GDPR پیاده‌سازی شده است.</p>
+      </div>
+      <div class="pt-3 border-t border-slate-800 flex justify-end">
+        <button @click="helpModalOpen = false" class="px-5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold">متوجه شدم</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function appData() {
+      return {
+        currentTab: 'dashboard',
+        navItems: [
+          { id: 'dashboard', label: 'داشبورد', icon: 'layout-dashboard' },
+          { id: 'attendance', label: 'حضور و غیاب کلاسی', icon: 'camera' },
+          { id: 'students', label: 'دانشجویان', icon: 'users' },
+          { id: 'add_student', label: 'ثبت دانشجو', icon: 'user-plus' },
+          { id: 'history', label: 'تاریخچه جلسات', icon: 'history' },
+          { id: 'settings', label: 'تنظیمات و بنچ‌مارک', icon: 'sliders' }
+        ],
+        dashboard: {},
+        studentsList: [],
+        sessionsList: [],
+        activeSettings: { match_threshold: 0.50, ambiguity_margin: 0.08, min_face_size: 28, min_blur_score: 45.0 },
+        hardwareInfo: {},
+        newStudent: { name: '', student_number: '', has_consent: true },
+        attendanceForm: { session_name: 'کلاس ریاضی ۱ - جلسه ۳', match_threshold: 0.50, ambiguity_margin: 0.08 },
+        selectedClassroomFile: null,
+        attendanceResult: null,
+        dragOver: false,
+        loading: false,
+        uploadModalOpen: false,
+        helpModalOpen: false,
+        targetStudent: null,
+        webcamActive: false,
+        webcamStream: null,
+        benchmarkLoading: false,
+        benchmarkResult: null,
+
+        async initApp() {
+          await this.loadDashboard();
+          await this.loadStudents();
+          await this.loadSessions();
+          await this.loadSettings();
+          this.$nextTick(() => { lucide.createIcons(); });
+        },
+
+        async loadDashboard() {
+          try {
+            const res = await fetch('/api/dashboard');
+            this.dashboard = await res.json();
+          } catch (e) { console.error(e); }
+        },
+
+        async loadStudents() {
+          try {
+            const res = await fetch('/api/students');
+            this.studentsList = await res.json();
+            const studentNav = this.navItems.find(i => i.id === 'students');
+            if (studentNav) studentNav.badge = this.studentsList.length;
+          } catch (e) { console.error(e); }
+        },
+
+        async loadSessions() {
+          try {
+            const res = await fetch('/api/attendance/sessions');
+            this.sessionsList = await res.json();
+          } catch (e) { console.error(e); }
+        },
+
+        async loadSettings() {
+          try {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            this.activeSettings = data.settings;
+            this.hardwareInfo = data.hardware;
+            this.attendanceForm.match_threshold = data.settings.match_threshold || 0.50;
+            this.attendanceForm.ambiguity_margin = data.settings.ambiguity_margin || 0.08;
+          } catch (e) { console.error(e); }
+        },
+
+        async saveNewStudent() {
+          this.loading = true;
+          try {
+            const res = await fetch('/api/students', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.newStudent)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'خطا در ثبت دانشجو');
+            
+            await this.loadStudents();
+            await this.loadDashboard();
+            const createdStudent = this.studentsList.find(s => s.id === data.id);
+            this.newStudent = { name: '', student_number: '', has_consent: true };
+            if (createdStudent) {
+              this.openUploadModal(createdStudent);
+            } else {
+              this.currentTab = 'students';
+            }
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        openUploadModal(st) {
+          this.targetStudent = st;
+          this.uploadModalOpen = true;
+          this.$nextTick(() => { lucide.createIcons(); });
+        },
+
+        async submitReferenceImage() {
+          const fileInput = this.$refs.refImageInput;
+          if (!fileInput.files.length) {
+            alert('لطفاً یک فایل تصویر انتخاب کنید.');
+            return;
+          }
+          this.loading = true;
+          const formData = new FormData();
+          formData.append('file', fileInput.files[0]);
+          formData.append('is_primary', 'true');
+
+          try {
+            const res = await fetch(`/api/students/${this.targetStudent.id}/images`, {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'خطا در بارگذاری عکس مرجع');
+            
+            this.uploadModalOpen = false;
+            await this.loadStudents();
+            this.currentTab = 'students';
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        async deleteStudent(id, name) {
+          if (!confirm(`آیا از حذف کامل بیومتریک و پروفایل "${name}" اطمینان دارید؟ این عمل غیرقابل بازگشت است.`)) return;
+          try {
+            const res = await fetch(`/api/students/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+              await this.loadStudents();
+              await this.loadDashboard();
+            }
+          } catch (e) { alert('خطا در حذف'); }
+        },
+
+        handleClassroomFile(e) {
+          if (e.target.files.length) {
+            this.selectedClassroomFile = e.target.files[0];
+          }
+        },
+
+        handleClassroomDrop(e) {
+          this.dragOver = false;
+          if (e.dataTransfer.files.length) {
+            this.selectedClassroomFile = e.dataTransfer.files[0];
+          }
+        },
+
+        async runAttendanceProcess() {
+          if (!this.selectedClassroomFile) return;
+          this.loading = true;
+          const formData = new FormData();
+          formData.append('file', this.selectedClassroomFile);
+          formData.append('session_name', this.attendanceForm.session_name);
+          formData.append('match_threshold', this.attendanceForm.match_threshold);
+          formData.append('ambiguity_margin', this.attendanceForm.ambiguity_margin);
+
+          try {
+            const res = await fetch('/api/attendance/process', {
+              method: 'POST',
+              body: formData
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'خطا در پردازش تصویر کلاس');
+            this.attendanceResult = data;
+            await this.loadDashboard();
+            await this.loadSessions();
+            this.$nextTick(() => { lucide.createIcons(); });
+          } catch (err) {
+            alert(err.message);
+          } finally {
+            this.loading = false;
+          }
+        },
+
+        async toggleWebcam() {
+          if (this.webcamActive) {
+            if (this.webcamStream) {
+              this.webcamStream.getTracks().forEach(t => t.stop());
+            }
+            this.webcamActive = false;
+          } else {
+            try {
+              this.webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+              this.webcamActive = true;
+              this.$nextTick(() => {
+                const video = document.getElementById('webcam_video');
+                if (video) video.srcObject = this.webcamStream;
+                lucide.createIcons();
+              });
+            } catch (err) {
+              alert('دسترسی به دوربین برقرار نشد: ' + err.message);
+            }
+          }
+        },
+
+        captureWebcamPhoto() {
+          const video = document.getElementById('webcam_video');
+          if (!video) return;
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 1280;
+          canvas.height = video.videoHeight || 720;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            this.selectedClassroomFile = new File([blob], "webcam_classroom.jpg", { type: "image/jpeg" });
+            this.toggleWebcam();
+            this.runAttendanceProcess();
+          }, 'image/jpeg', 0.95);
+        },
+
+        async saveSettings() {
+          try {
+            const res = await fetch('/api/settings', {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(this.activeSettings)
+            });
+            if (res.ok) {
+              alert('تنظیمات با موفقیت ذخیره شد.');
+              await this.loadSettings();
+            }
+          } catch (e) { alert('خطا در ذخیره تنظیمات'); }
+        },
+
+        async runBenchmarkTest() {
+          this.benchmarkLoading = true;
+          try {
+            const res = await fetch('/api/benchmark/metrics');
+            this.benchmarkResult = await res.json();
+          } catch (e) { alert('خطا در اجرای بنچ‌مارک'); }
+          finally { this.benchmarkLoading = false; }
+        },
+
+        async deleteSession(id) {
+          if (!confirm('آیا از حذف این جلسه اطمینان دارید؟')) return;
+          try {
+            const res = await fetch(`/api/attendance/sessions/${id}`, { method: 'DELETE' });
+            if (res.ok) {
+              await this.loadSessions();
+              await this.loadDashboard();
+            }
+          } catch (e) { alert('خطا در حذف'); }
+        },
+
+        viewSession(id) {
+          this.currentTab = 'history';
+        },
+
+        openQuickHelp() {
+          this.helpModalOpen = true;
+          this.$nextTick(() => { lucide.createIcons(); });
+        },
+
+        formatDateTime(isoStr) {
+          if (!isoStr) return '';
+          return new Date(isoStr).toLocaleString('fa-IR');
+        },
+
+        calculateAttendancePercent(sess) {
+          if (!sess) return 0;
+          const total = (sess.present_count || 0) + (sess.absent_count || 0);
+          if (total === 0) return 0;
+          return Math.round((sess.present_count / total) * 100);
+        }
+      }
+    }
+  </script>
+</body>
+</html>

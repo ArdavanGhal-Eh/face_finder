@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Database & Upload Storage (Privacy & Cleanliness)
+app/storage/*.db
+app/storage/students/*
+app/storage/sessions/*
+!app/storage/.gitkeep
+!app/storage/students/.gitkeep
+!app/storage/sessions/.gitkeep
+
+# IDEs & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Insightface cache (if local)
+.insightface/
