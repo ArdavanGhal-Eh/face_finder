@@ -59,9 +59,9 @@ def get_dashboard_summary():
     all_studs = get_all_students(include_archived=True)
     active_studs = [s for s in all_studs if s["status"] == "active"]
     sessions = get_all_sessions()
-    
+
     last_session = sessions[0] if sessions else None
-    
+
     return {
         "total_students": len(all_studs),
         "active_students": len(active_studs),
