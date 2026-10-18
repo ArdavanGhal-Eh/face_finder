@@ -26,7 +26,7 @@ def apply_clahe(
     """
     if image_bgr is None or image_bgr.size == 0:
         return image_bgr
-        
+
     lab = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2LAB)
     clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_grid_size)
     lab[:, :, 0] = clahe.apply(lab[:, :, 0])
@@ -45,16 +45,16 @@ def apply_unsharp_mask(
     """
     if image_bgr is None or image_bgr.size == 0:
         return image_bgr
-        
+
     blurred = cv2.GaussianBlur(image_bgr, (0, 0), sigma)
     diff = cv2.subtract(image_bgr, blurred)
-    
+
     # Mask out low amplitude noise
     if threshold > 0:
         gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
         low_contrast_mask = gray_diff < threshold
         diff[low_contrast_mask] = 0
-        
+
     sharpened = cv2.addWeighted(image_bgr, 1.0 + strength, blurred, -strength, 0)
     return np.clip(sharpened, 0, 255).astype(np.uint8)
 
@@ -68,7 +68,7 @@ def enhance_face_crop_112(crop_112: np.ndarray) -> np.ndarray:
     """
     if crop_112 is None or crop_112.size == 0:
         return crop_112
-        
+
     # Contrast normalization
     enhanced = apply_clahe(crop_112, clip_limit=1.8, tile_grid_size=(4, 4))
     # Unsharp mask for eye/lip contours
@@ -82,12 +82,12 @@ def compute_iou(box1: List[float], box2: List[float]) -> float:
     y1 = max(box1[1], box2[1])
     x2 = min(box1[2], box2[2])
     y2 = min(box1[3], box2[3])
-    
+
     intersection = max(0, x2 - x1) * max(0, y2 - y1)
     area1 = (box1[2] - box1[0]) * (box1[3] - box1[1])
     area2 = (box2[2] - box2[0]) * (box2[3] - box2[1])
     union = area1 + area2 - intersection
-    
+
     return intersection / union if union > 0 else 0.0
 
 
@@ -95,11 +95,11 @@ def nms_faces(faces: List[Any], iou_thresh: float = 0.45) -> List[Any]:
     """Applies Non-Maximum Suppression (NMS) to merge overlapping detections."""
     if not faces:
         return []
-        
+
     # Sort by detection score descending
     sorted_faces = sorted(faces, key=lambda f: f.det_score, reverse=True)
     kept = []
-    
+
     for f in sorted_faces:
         duplicate = False
         for k in kept:
@@ -108,7 +108,7 @@ def nms_faces(faces: List[Any], iou_thresh: float = 0.45) -> List[Any]:
                 break
         if not duplicate:
             kept.append(f)
-            
+
     return kept
 
 
@@ -123,20 +123,20 @@ def run_tiled_face_detection(
     Preserves small back-row faces without downscaling artifacts.
     """
     h_img, w_img = image_bgr.shape[:2]
-    
+
     # Global full-image detection
     all_faces = list(app.get(image_bgr))
-    
+
     tw, th = tile_size
     step_x = int(tw * (1.0 - overlap_ratio))
     step_y = int(th * (1.0 - overlap_ratio))
-    
+
     for y in range(0, max(1, h_img - th + 1), step_y):
         for x in range(0, max(1, w_img - tw + 1), step_x):
             x2 = min(w_img, x + tw)
             y2 = min(h_img, y + th)
             tile = image_bgr[y:y2, x:x2]
-            
+
             tile_faces = app.get(tile)
             for f in tile_faces:
                 # Offset bounding box and landmarks back to global coordinates
@@ -148,5 +148,5 @@ def run_tiled_face_detection(
                     f.kps[:, 0] += x
                     f.kps[:, 1] += y
                 all_faces.append(f)
-                
+
     return nms_faces(all_faces, iou_thresh=0.45)
