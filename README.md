@@ -322,7 +322,7 @@ python benchmark/run_benchmark.py
 [+] SCRFD Detector + ArcFace Recognition: Optimized for real-time edge processing.
 
 ================================================================================
-Threshold  | Accuracy  | Precision  | Recall   | F1-Score  | FPR      | FNR     
+Threshold  | Accuracy  | Precision  | Recall   | F1-Score  | FPR      | FNR
 ================================================================================
 0.30       | 100.00  % | 100.00   % | 100.00 % | 100.00  % | 0.00   % | 0.00   %
 0.35       | 100.00  % | 100.00   % | 100.00 % | 100.00  % | 0.00   % | 0.00   %
