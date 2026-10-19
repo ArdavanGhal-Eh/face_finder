@@ -23,7 +23,7 @@ def generate_benchmark_pairs(gallery: Dict[int, Dict[str, Any]]):
     student_ids = list(gallery.keys())
     positive_pairs = []
     negative_pairs = []
-    
+
     # 1. Intra-class pairs (same student, multiple images or perturbed exemplar)
     for sid, s_data in gallery.items():
         embs = s_data["embeddings"]
@@ -42,7 +42,7 @@ def generate_benchmark_pairs(gallery: Dict[int, Dict[str, Any]]):
             perturbed = cos_theta * base + sin_theta * rand_perp
             perturbed = perturbed / np.linalg.norm(perturbed)
             positive_pairs.append((base, perturbed))
-            
+
     # 2. Inter-class pairs (different students)
     for i in range(len(student_ids)):
         for j in range(i + 1, len(student_ids)):
@@ -53,14 +53,14 @@ def generate_benchmark_pairs(gallery: Dict[int, Dict[str, Any]]):
             for e1 in embs1:
                 for e2 in embs2:
                     negative_pairs.append((e1, e2))
-                    
+
     # 3. Add synthetic unknown non-gallery identities (random unit vectors)
     for sid in student_ids:
         for e in gallery[sid]["embeddings"]:
             rand_vec = np.random.normal(0, 1.0, size=512).astype(np.float32)
             rand_vec = rand_vec / np.linalg.norm(rand_vec)
             negative_pairs.append((e, rand_vec))
-            
+
     return positive_pairs, negative_pairs
 
 
@@ -77,26 +77,26 @@ def run_benchmark():
             "message": "At least 2 students with reference images must be enrolled to execute benchmark suite.",
             "metrics": None
         }
-        
+
     pos_pairs, neg_pairs = generate_benchmark_pairs(gallery)
-    
+
     # Compute similarities
     pos_sims = [compute_cosine_similarity(p[0], p[1]) for p in pos_pairs]
     neg_sims = [compute_cosine_similarity(n[0], n[1]) for n in neg_pairs]
-    
+
     # Threshold sweep from 0.30 to 0.75
     thresholds = [round(t, 2) for t in np.arange(0.30, 0.80, 0.05)]
     sweep_results = []
-    
+
     best_f1 = -1.0
     optimal_thresh = 0.50
-    
+
     for th in thresholds:
         tp = sum(1 for s in pos_sims if s >= th)
         fn = sum(1 for s in pos_sims if s < th)
         fp = sum(1 for s in neg_sims if s >= th)
         tn = sum(1 for s in neg_sims if s < th)
-        
+
         total = tp + tn + fp + fn
         accuracy = (tp + tn) / total if total > 0 else 0.0
         precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0
@@ -104,11 +104,11 @@ def run_benchmark():
         f1 = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
-        
+
         if f1 > best_f1:
             best_f1 = f1
             optimal_thresh = th
-            
+
         sweep_results.append({
             "threshold": th,
             "tp": tp,
@@ -122,10 +122,10 @@ def run_benchmark():
             "fpr": round(fpr * 100, 2),
             "fnr": round(fnr * 100, 2)
         })
-        
+
     # Stats at default threshold 0.50
     curr_stat = next((r for r in sweep_results if r["threshold"] == 0.50), sweep_results[len(sweep_results)//2])
-    
+
     return {
         "status": "success",
         "total_positive_pairs": len(pos_pairs),
