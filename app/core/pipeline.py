@@ -25,20 +25,20 @@ from app.core.face_aligner import align_face_112
 
 class FacePipeline:
     """Singleton wrapper around InsightFace models and processing utilities."""
-    
+
     _instance = None
     _lock = threading.Lock()
-    
+
     def __init__(self, model_name: str = "buffalo_s"):
         self.model_name = model_name
         self.app = None
         self._initialize_model()
-        
+
     def _initialize_model(self):
         """Initializes InsightFace with detection and recognition modules only."""
         # Use CPUExecutionProvider by default for universal portability
         providers = ['CPUExecutionProvider']
-        
+
         # Check for CUDA or DirectML if available in ONNX Runtime
         import onnxruntime
         available = onnxruntime.get_available_providers()
@@ -46,7 +46,7 @@ class FacePipeline:
             providers.insert(0, 'CUDAExecutionProvider')
         elif 'DirectMLExecutionProvider' in available:
             providers.insert(0, 'DirectMLExecutionProvider')
-            
+
         self.app = FaceAnalysis(
             name=self.model_name,
             allowed_modules=['detection', 'recognition'],
@@ -85,7 +85,7 @@ class FacePipeline:
         """
         Processes a single reference image for student enrollment.
         Validates that exactly one prominent face is present.
-        
+
         Returns:
             embedding: Normalized 512-D float32 array or None
             aligned_crop: 112x112 BGR face crop or None
@@ -94,11 +94,11 @@ class FacePipeline:
         """
         if image_bgr is None or image_bgr.size == 0:
             return None, None, 0.0, "Invalid image data"
-            
+
         faces = self.app.get(image_bgr)
         if len(faces) == 0:
             return None, None, 0.0, "No face detected in the reference image. Please provide a clear, well-lit photo."
-            
+
         if len(faces) > 1:
             # Sort by bounding box area to check if there is one dominant face
             faces = sorted(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True)
@@ -106,31 +106,31 @@ class FacePipeline:
             area_second = (faces[1].bbox[2] - faces[1].bbox[0]) * (faces[1].bbox[3] - faces[1].bbox[1])
             if area_second > 0.4 * area_main:
                 return None, None, 0.0, f"Multiple faces ({len(faces)}) detected. Reference images must contain only the student's face."
-                
+
         face = faces[0]
         x1, y1, x2, y2 = [int(v) for v in face.bbox[:4]]
         h, w = image_bgr.shape[:2]
         crop = image_bgr[max(0, y1):min(h, y2), max(0, x1):min(w, x2)]
-        
+
         blur_score = self.calculate_blur_score(crop)
         if blur_score < 25.0:
             return None, None, blur_score, f"Image is too blurry (Blur Score: {blur_score:.1f}). Please capture a sharper photo."
-            
+
         # Get normalized embedding
         emb = face.normed_embedding
         if emb is None or len(emb) == 0:
             return None, None, 0.0, "Failed to extract biometric embedding from face."
-            
+
         emb = np.array(emb, dtype=np.float32)
         norm = np.linalg.norm(emb)
         if norm > 1e-6:
             emb = emb / norm
-            
+
         # Aligned crop
         aligned = align_face_112(image_bgr, face.kps)
         if aligned is None and crop.size > 0:
             aligned = cv2.resize(crop, (112, 112))
-            
+
         quality = min(1.0, (face.det_score * 0.5) + (min(blur_score, 150.0) / 150.0 * 0.5))
         return emb, aligned, quality, None
 
@@ -146,30 +146,30 @@ class FacePipeline:
         """
         Detects all faces in a group classroom photo, extracts embeddings, matches with gallery,
         annotates the image, and crops unknown/uncertain faces for manual verification.
-        
+
         Returns:
             result: ClassroomAttendanceResult dataclass
             annotated_image_bgr: Image with bounding boxes and name labels
             unknown_crops: List of crop dictionaries with file path and metadata
         """
         h_img, w_img = classroom_image_bgr.shape[:2]
-        
+
         # 1. Run detection & recognition
         raw_faces = self.app.get(classroom_image_bgr)
-        
+
         detected_faces = []
         for i, f in enumerate(raw_faces):
             x1, y1, x2, y2 = [int(v) for v in f.bbox[:4]]
             x1, y1 = max(0, x1), max(0, y1)
             x2, y2 = min(w_img, x2), min(h_img, y2)
-            
+
             bw = x2 - x1
             bh = y2 - y1
             face_size = min(bw, bh)
-            
+
             crop = classroom_image_bgr[y1:y2, x1:x2]
             blur_score = self.calculate_blur_score(crop)
-            
+
             emb = f.normed_embedding
             if emb is not None and len(emb) > 0:
                 emb = np.array(emb, dtype=np.float32)
@@ -178,7 +178,7 @@ class FacePipeline:
                     emb = emb / norm
             else:
                 emb = np.zeros(512, dtype=np.float32)
-                
+
             detected_faces.append({
                 "face_index": i,
                 "bbox": [x1, y1, x2, y2],
@@ -189,7 +189,7 @@ class FacePipeline:
                 "kps": f.kps if hasattr(f, 'kps') else None,
                 "crop": crop
             })
-            
+
         # 2. Match with student gallery
         attendance_result = match_classroom_faces(
             detected_faces=detected_faces,
@@ -199,14 +199,14 @@ class FacePipeline:
             min_face_size=min_face_size,
             min_blur_score=min_blur_score
         )
-        
+
         # 3. Render annotations on copy of image
         annotated_image = classroom_image_bgr.copy()
         unknown_crops_info = []
-        
+
         for dec in attendance_result.all_decisions:
             x1, y1, x2, y2 = dec.bbox
-            
+
             # Determine color scheme and label based on status
             if dec.status == "present":
                 # Emerald Green
@@ -225,24 +225,24 @@ class FacePipeline:
                 box_color = (60, 60, 230)
                 label = f"Unknown ({dec.similarity:.2f})"
                 sub_label = "Not in database"
-                
+
             # Draw bounding box
             cv2.rectangle(annotated_image, (x1, y1), (x2, y2), box_color, 2)
-            
+
             # Draw semi-transparent header tag
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.55
             thickness = 1
-            
+
             (text_w, text_h), baseline = cv2.getTextSize(label, font, font_scale, thickness)
             tag_h = text_h + 10
             tag_w = max(text_w + 12, 100)
-            
+
             tag_y1 = max(0, y1 - tag_h)
             tag_y2 = y1
             tag_x1 = x1
             tag_x2 = min(w_img, x1 + tag_w)
-            
+
             # Draw background rectangle for label
             cv2.rectangle(annotated_image, (tag_x1, tag_y1), (tag_x2, tag_y2), box_color, -1)
             cv2.putText(
@@ -255,5 +255,5 @@ class FacePipeline:
                 thickness,
                 lineType=cv2.LINE_AA
             )
-            
+
         return attendance_result, annotated_image, unknown_crops_info
