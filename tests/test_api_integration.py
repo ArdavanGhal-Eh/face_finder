@@ -39,19 +39,19 @@ def test_student_api_flow():
     }
     res = client.post("/api/students", json=payload)
     assert res.status_code in [201, 409]
-    
+
     if res.status_code == 201:
         sid = res.json()["id"]
-        
+
         # 2. Get student
         res_get = client.get(f"/api/students/{sid}")
         assert res_get.status_code == 200
         assert res_get.json()["name"] == "Integration Test Student"
-        
+
         # 3. Update student
         res_put = client.put(f"/api/students/{sid}", json={"name": "Integration Student Updated"})
         assert res_put.status_code == 200
-        
+
         # 4. Delete student
         res_del = client.delete(f"/api/students/{sid}")
         assert res_del.status_code == 200
@@ -64,7 +64,7 @@ def test_settings_api():
     data = res.json()
     assert "settings" in data
     assert "hardware" in data
-    
+
     # Update settings
     res_update = client.put("/api/settings", json={"match_threshold": 0.55, "min_face_size": 30})
     assert res_update.status_code == 200
