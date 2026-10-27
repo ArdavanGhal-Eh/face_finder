@@ -39,7 +39,7 @@ def sample_gallery():
     emb1 = create_random_unit_vector()
     emb2 = create_random_unit_vector()
     emb3 = create_random_unit_vector()
-    
+
     return {
         101: {
             "id": 101,
@@ -69,7 +69,7 @@ def test_cosine_similarity_properties():
     """Verifies symmetry, self-similarity = 1.0, and bounds."""
     v1 = create_random_unit_vector()
     v2 = create_random_unit_vector()
-    
+
     # Self similarity is 1.0
     assert abs(compute_cosine_similarity(v1, v1) - 1.0) < 1e-5
     # Symmetry
@@ -85,7 +85,7 @@ def test_all_students_present(sample_gallery):
         {"face_index": 1, "bbox": [90, 10, 160, 80], "embedding": perturb_vector(sample_gallery[102]["mean_embedding"], 0.03), "face_size": 70, "blur_score": 110.0},
         {"face_index": 2, "bbox": [170, 10, 240, 80], "embedding": perturb_vector(sample_gallery[103]["mean_embedding"], 0.03), "face_size": 70, "blur_score": 95.0},
     ]
-    
+
     res = match_classroom_faces(detected, sample_gallery, match_threshold=0.50)
     assert len(res.present) == 3
     assert len(res.absent) == 0
@@ -156,11 +156,11 @@ def test_ambiguous_twins_flagged_as_uncertain(sample_gallery):
     v2 = sample_gallery[102]["mean_embedding"]
     mid = (v1 + v2) / 2.0
     mid = mid / np.linalg.norm(mid)
-    
+
     detected = [
         {"face_index": 0, "bbox": [10, 10, 80, 80], "embedding": mid, "face_size": 70, "blur_score": 100.0}
     ]
-    
+
     # Ambiguity margin 0.15 will catch this
     res = match_classroom_faces(detected, sample_gallery, match_threshold=0.30, ambiguity_margin=0.15)
     assert len(res.uncertain) >= 1 or len(res.unknown) >= 1

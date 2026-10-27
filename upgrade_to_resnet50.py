@@ -35,7 +35,7 @@ def run_upgrade_and_evaluation():
     print("=" * 75)
     print("[1] INITIALIZING HIGH-PERFORMANCE ResNet-50 ENGINE (buffalo_l)...")
     print("=" * 75)
-    
+
     app = FaceAnalysis(
         name="buffalo_l",
         allowed_modules=['detection', 'recognition'],
@@ -43,7 +43,7 @@ def run_upgrade_and_evaluation():
     )
     app.prepare(ctx_id=0, det_size=(640, 640))
     print("[+] ResNet-50 ArcFace (w600k_r50.onnx) & SCRFD-10G (det_10g.onnx) Ready!")
-    
+
     # 1. Reset Database & Enroll 27 students with ResNet-50 embeddings
     init_db()
     with get_connection() as conn:
@@ -52,43 +52,43 @@ def run_upgrade_and_evaluation():
         cursor.execute("DELETE FROM students;")
         cursor.execute("DELETE FROM attendance_sessions;")
         conn.commit()
-        
+
     student_dirs = sorted([d for d in STUDENTS_SOURCE_DIR.iterdir() if d.is_dir() and d.name.startswith("student_")])
     print(f"\n[2] ENROLLING {len(student_dirs)} STUDENTS WITH ResNet-50 512-D VECTORS...")
-    
+
     for s_dir in student_dirs:
         num_str = s_dir.name.replace("student_", "")
         s_name = f"Student {num_str}"
         s_num = f"STU-{num_str}"
-        
+
         img_files = list(s_dir.glob("*.jpg")) + list(s_dir.glob("*.png")) + list(s_dir.glob("*.jpeg"))
         if not img_files:
             continue
-            
+
         ref_bgr = cv2.imread(str(img_files[0]))
         faces = app.get(ref_bgr)
         if not faces:
             # Fallback resize
             h, w = ref_bgr.shape[:2]
             faces = app.get(cv2.resize(ref_bgr, (w * 2, h * 2)))
-            
+
         if not faces:
             print(f"[-] Could not detect face in {s_dir.name}")
             continue
-            
+
         best_face = sorted(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]), reverse=True)[0]
         emb = best_face.normed_embedding
         emb = np.array(emb, dtype=np.float32)
         emb = emb / np.linalg.norm(emb)
-        
+
         sid = create_student(student_number=s_num, name=s_name, has_consent=True, status="active")
-        
+
         # Save local copy
         dest_folder = STUDENTS_DIR / f"student_{sid}"
         dest_folder.mkdir(parents=True, exist_ok=True)
         dest_path = dest_folder / img_files[0].name
         cv2.imwrite(str(dest_path), ref_bgr)
-        
+
         add_student_image(
             student_id=sid,
             file_path=str(dest_path),
@@ -97,62 +97,62 @@ def run_upgrade_and_evaluation():
             is_primary=True
         )
         print(f"  * Enrolled: {s_name} ({s_num})")
-        
+
     # 2. Process Classroom Image with ResNet-50
     print("\n[3] PROCESSING CLASSROOM IMAGE WITH ResNet-50...")
     classroom_bgr = cv2.imread(str(CLASSROOM_PHOTO_PATH))
     h_img, w_img = classroom_bgr.shape[:2]
-    
+
     cr_faces = app.get(classroom_bgr)
     print(f"[+] Detected {len(cr_faces)} faces in classroom photo.")
-    
+
     gallery = get_all_student_embeddings()
     student_ids = list(gallery.keys())
-    
+
     # Similarity matrix
     sims = np.zeros((len(cr_faces), len(student_ids)), dtype=np.float32)
     for i, cf in enumerate(cr_faces):
         for j, sid in enumerate(student_ids):
             sims[i, j] = compute_cosine_similarity(cf.normed_embedding, gallery[sid]["mean_embedding"])
-            
+
     # Hungarian 1-to-1 matching
     row_ind, col_ind = linear_sum_assignment(1.0 - sims)
-    
+
     assigned_faces = {}
     for r, c in zip(row_ind, col_ind):
         assigned_faces[r] = (c, sims[r, c])
-        
+
     # 3. Annotate image (Green for students, Red for unknown)
     annotated = classroom_bgr.copy()
     present_records = []
     unknown_detections = []
-    
+
     for i, face in enumerate(cr_faces):
         x1, y1, x2, y2 = [int(v) for v in face.bbox[:4]]
         x1, y1 = max(0, x1), max(0, y1)
         x2, y2 = min(w_img, x2), min(h_img, y2)
-        
+
         if i in assigned_faces:
             c, sim = assigned_faces[i]
             sid = student_ids[c]
             student = gallery[sid]
-            
+
             # Green Box
             color = (36, 210, 80)
             label = f"{student['name']} ({sim*100:.1f}%)"
-            
+
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
-            
+
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.40
             thickness = 1
             (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
-            
+
             tag_y1 = max(0, y1 - th - 6)
             tag_y2 = y1
             tag_x1 = x1
             tag_x2 = min(w_img, x1 + tw + 8)
-            
+
             cv2.rectangle(annotated, (tag_x1, tag_y1), (tag_x2, tag_y2), color, -1)
             cv2.putText(
                 annotated,
@@ -164,7 +164,7 @@ def run_upgrade_and_evaluation():
                 thickness,
                 lineType=cv2.LINE_AA
             )
-            
+
             present_records.append({
                 "student_id": sid,
                 "name": student["name"],
@@ -176,19 +176,19 @@ def run_upgrade_and_evaluation():
             # Red Box
             color = (50, 50, 240)
             label = "Unknown"
-            
+
             cv2.rectangle(annotated, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
-            
+
             font = cv2.FONT_HERSHEY_SIMPLEX
             font_scale = 0.38
             thickness = 1
             (tw, th), _ = cv2.getTextSize(label, font, font_scale, thickness)
-            
+
             tag_y1 = max(0, y1 - th - 5)
             tag_y2 = y1
             tag_x1 = x1
             tag_x2 = min(w_img, x1 + tw + 6)
-            
+
             cv2.rectangle(annotated, (tag_x1, tag_y1), (tag_x2, tag_y2), color, -1)
             cv2.putText(
                 annotated,
@@ -200,18 +200,18 @@ def run_upgrade_and_evaluation():
                 thickness,
                 lineType=cv2.LINE_AA
             )
-            
+
             unknown_detections.append({
                 "face_index": i,
                 "bbox": [x1, y1, x2, y2],
                 "best_similarity": 0.0,
                 "reason": "Non-enrolled crowd member"
             })
-            
+
     # Save output image
     cv2.imwrite(str(DESKTOP_OUTPUT_PATH), annotated)
     cv2.imwrite(str(SESSION_OUTPUT_PATH), annotated)
-    
+
     # Save session
     save_attendance_session(
         session_name="Classroom Attendance (ResNet-50 Engine)",
@@ -225,10 +225,10 @@ def run_upgrade_and_evaluation():
         unknown_detections=unknown_detections,
         notes="High-precision ResNet-50 ArcFace (buffalo_l) match"
     )
-    
+
     # Update system setting to buffalo_l
     update_system_settings({"model_name": "buffalo_l", "match_threshold": 0.22})
-    
+
     print("\n" + "=" * 75)
     print(f"[+] ResNet-50 Upgrade & Attendance Evaluation Completed Successfully!")
     print(f"    Present Students (Green Boxes): {len(present_records)} / 27")
