@@ -23,7 +23,7 @@ SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
 
 class SystemSettings(BaseModel):
     """Configurable system runtime thresholds and operational parameters."""
-    
+
     # Matching Thresholds
     match_threshold: float = Field(
         default=0.25,
@@ -37,7 +37,7 @@ class SystemSettings(BaseModel):
         le=0.30,
         description="Minimum gap between Top-1 and Top-2 similarity scores. Below this gap, match is labeled Uncertain."
     )
-    
+
     # Face Quality & Detection Filtering
     min_face_size: int = Field(
         default=16,
@@ -57,7 +57,7 @@ class SystemSettings(BaseModel):
         le=200.0,
         description="Variance of Laplacian threshold."
     )
-    
+
     # Model & Execution
     model_name: str = Field(
         default="buffalo_l",
@@ -65,7 +65,7 @@ class SystemSettings(BaseModel):
     )
     det_size_w: int = Field(default=640, description="Detection input width")
     det_size_h: int = Field(default=640, description="Detection input height")
-    
+
     # Biometric Privacy & Compliance
     require_biometric_consent: bool = Field(
         default=True,
