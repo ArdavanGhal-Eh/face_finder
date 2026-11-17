@@ -1,6 +1,6 @@
 # System Architecture & Technical Specifications
 
-**Face Finder: Smart Classroom Face Recognition & Biometric Attendance System**  
+**Face Finder: Smart Classroom Face Recognition & Biometric Attendance System**
 *Local, Privacy-Preserving, Edge-Optimized Biometric Engine*
 
 ---

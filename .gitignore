@@ -45,3 +45,7 @@ desktop.ini
 
 # Insightface cache (if local)
 .insightface/
+
+# Nightly Hardened Hygiene Rules
+.env
+*.key
