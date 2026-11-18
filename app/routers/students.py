@@ -84,7 +84,7 @@ def modify_student(student_id: int, payload: StudentUpdate):
     existing = get_student_by_id(student_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Student not found")
-        
+
     ok = update_student(
         student_id=student_id,
         name=payload.name,
@@ -106,7 +106,7 @@ def remove_student(student_id: int):
     existing = get_student_by_id(student_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Student not found")
-        
+
     ok = delete_student(student_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Failed to delete student")
@@ -126,36 +126,36 @@ async def upload_reference_image(
     student = get_student_by_id(student_id)
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
-        
+
     if not student["has_consent"]:
         raise HTTPException(status_code=403, detail="Student has not provided biometric consent")
-        
+
     # Read image
     content = await file.read()
     nparr = np.frombuffer(content, np.uint8)
     img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Invalid image file format")
-        
+
     # Process through pipeline
     pipeline = FacePipeline.get_instance()
     embedding, aligned_crop, quality, err = pipeline.extract_face_for_enrollment(img_bgr)
-    
+
     if err:
         raise HTTPException(status_code=422, detail=err)
-        
+
     # Save image file to local storage
     student_folder = STUDENTS_DIR / f"student_{student_id}"
     student_folder.mkdir(parents=True, exist_ok=True)
-    
+
     filename = f"ref_{len(student.get('images', [])) + 1}_{file.filename}"
     save_path = student_folder / filename
-    
+
     # Save aligned crop or original image
     save_img = aligned_crop if aligned_crop is not None else img_bgr
     cv2.imwrite(str(save_path), save_img)
-    
+
     # Save embedding in DB
     img_id = add_student_image(
         student_id=student_id,
@@ -164,7 +164,7 @@ async def upload_reference_image(
         face_quality=quality,
         is_primary=is_primary
     )
-    
+
     return {
         "id": img_id,
         "file_path": str(save_path),
