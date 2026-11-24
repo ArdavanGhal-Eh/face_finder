@@ -48,20 +48,20 @@ async def process_attendance(
     content = await file.read()
     nparr = np.frombuffer(content, np.uint8)
     img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
+
     if img_bgr is None:
         raise HTTPException(status_code=400, detail="Invalid image file format")
-        
+
     # Load system settings
     db_settings = get_system_settings()
     th_match = match_threshold if match_threshold is not None else float(db_settings.get("match_threshold", settings.match_threshold))
     th_margin = ambiguity_margin if ambiguity_margin is not None else float(db_settings.get("ambiguity_margin", settings.ambiguity_margin))
     min_face_size = int(db_settings.get("min_face_size", settings.min_face_size))
     min_blur = float(db_settings.get("min_blur_score", settings.min_blur_score))
-    
+
     # Load enrolled gallery from DB
     gallery = get_all_student_embeddings()
-    
+
     # Process through pipeline
     pipeline = FacePipeline.get_instance()
     attendance_result, annotated_img, _ = pipeline.process_classroom_image(
@@ -72,18 +72,18 @@ async def process_attendance(
         min_face_size=min_face_size,
         min_blur_score=min_blur
     )
-    
+
     # Save files to disk
     timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     raw_filename = f"session_{timestamp_str}_raw.jpg"
     annotated_filename = f"session_{timestamp_str}_annotated.jpg"
-    
+
     raw_path = SESSIONS_DIR / raw_filename
     annotated_path = SESSIONS_DIR / annotated_filename
-    
+
     cv2.imwrite(str(raw_path), img_bgr)
     cv2.imwrite(str(annotated_path), annotated_img)
-    
+
     # Save session records into DB
     session_id = save_attendance_session(
         session_name=session_name.strip(),
@@ -97,12 +97,12 @@ async def process_attendance(
         unknown_detections=attendance_result.unknown,
         notes=notes
     )
-    
+
     # Convert annotated image to base64 or serve via static URL
     # Relative path for front-end consumption: /storage/sessions/<filename>
     annotated_url = f"/storage/sessions/{annotated_filename}"
     raw_url = f"/storage/sessions/{raw_filename}"
-    
+
     return {
         "session_id": session_id,
         "session_name": session_name,
@@ -146,14 +146,14 @@ def get_session(session_id: int):
     session = get_session_detail(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-        
+
     if session["annotated_image_path"]:
         p = Path(session["annotated_image_path"])
         session["annotated_image_url"] = f"/storage/sessions/{p.name}"
     if session["classroom_image_path"]:
         p = Path(session["classroom_image_path"])
         session["classroom_image_url"] = f"/storage/sessions/{p.name}"
-        
+
     return session
 
 
@@ -172,15 +172,15 @@ def export_session_report(session_id: int, format: str = "csv"):
     session = get_session_detail(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
-        
+
     session_title = session["session_name"]
     date_str = session["timestamp"][:10]
-    
+
     if format.lower() == "excel":
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Attendance Report"
-        
+
         # Header info
         ws.append(["Smart Classroom Face Finder - Attendance Report"])
         ws.append(["Session Name:", session_title])
@@ -188,7 +188,7 @@ def export_session_report(session_id: int, format: str = "csv"):
         ws.append(["Total Detected Faces:", session["total_detected_faces"]])
         ws.append(["Present:", session["present_count"], "Absent:", session["absent_count"], "Uncertain:", session["uncertain_count"], "Unknown:", session["unknown_count"]])
         ws.append([])
-        
+
         # Student Attendance Table
         ws.append(["Category", "Student Name", "Student Number", "Confidence", "Reason"])
         for rec in session["records"]:
@@ -199,7 +199,7 @@ def export_session_report(session_id: int, format: str = "csv"):
                 f"{rec['confidence']:.2f}" if rec['confidence'] > 0 else "-",
                 rec["reason"] or ""
             ])
-            
+
         # Unknown detections
         if session["unknowns"]:
             ws.append([])
@@ -212,11 +212,11 @@ def export_session_report(session_id: int, format: str = "csv"):
                     unk["best_candidate_name"] or "None",
                     unk["reason"]
                 ])
-                
+
         output = io.BytesIO()
         wb.save(output)
         output.seek(0)
-        
+
         filename = f"attendance_{session_id}_{date_str}.xlsx"
         return StreamingResponse(
             output,
@@ -228,7 +228,7 @@ def export_session_report(session_id: int, format: str = "csv"):
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["Category", "Student Name", "Student Number", "Confidence", "Reason"])
-        
+
         for rec in session["records"]:
             writer.writerow([
                 rec["status"].upper(),
@@ -237,7 +237,7 @@ def export_session_report(session_id: int, format: str = "csv"):
                 f"{rec['confidence']:.2f}" if rec['confidence'] > 0 else "-",
                 rec["reason"] or ""
             ])
-            
+
         for unk in session["unknowns"]:
             writer.writerow([
                 "UNKNOWN",
@@ -246,7 +246,7 @@ def export_session_report(session_id: int, format: str = "csv"):
                 f"{unk['best_similarity']:.2f}",
                 unk["reason"]
             ])
-            
+
         filename = f"attendance_{session_id}_{date_str}.csv"
         return Response(
             content=output.getvalue(),

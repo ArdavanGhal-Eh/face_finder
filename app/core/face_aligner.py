@@ -38,26 +38,26 @@ def align_face_112(
 ) -> Optional[np.ndarray]:
     """
     Aligns and normalizes face pose using 5 detected facial landmarks.
-    
+
     Args:
         image_bgr: Source image in BGR format
         landmarks_5pts: NumPy array of shape (5, 2) containing [x, y] coordinates
         target_size: Output resolution, default (112, 112)
-        
+
     Returns:
         np.ndarray: Aligned face crop (112, 112, 3) BGR or None if transform fails
     """
     if landmarks_5pts is None or len(landmarks_5pts) != 5:
         return None
-        
+
     src = np.array(landmarks_5pts, dtype=np.float32)
     dst = ARCFACE_REF_POINTS_112
-    
+
     try:
         M = estimate_similarity_transform(src, dst)
         if M is None:
             return None
-            
+
         aligned = cv2.warpAffine(
             image_bgr,
             M,
@@ -81,21 +81,21 @@ def crop_face_fallback(
     """
     h_img, w_img = image_bgr.shape[:2]
     x1, y1, x2, y2 = bbox[:4]
-    
+
     bw = x2 - x1
     bh = y2 - y1
     cx = (x1 + x2) / 2.0
     cy = (y1 + y2) / 2.0
-    
+
     side = max(bw, bh) * (1.0 + margin_ratio)
-    
+
     x1_sq = max(0, int(cx - side / 2.0))
     y1_sq = max(0, int(cy - side / 2.0))
     x2_sq = min(w_img, int(cx + side / 2.0))
     y2_sq = min(h_img, int(cy + side / 2.0))
-    
+
     crop = image_bgr[y1_sq:y2_sq, x1_sq:x2_sq]
     if crop.size == 0:
         return np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
-        
+
     return cv2.resize(crop, target_size, interpolation=cv2.INTER_LINEAR)

@@ -26,7 +26,7 @@ def init_db():
     """Initializes database tables and default configuration settings."""
     with get_connection() as conn:
         cursor = conn.cursor()
-        
+
         # 1. Students Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS students (
@@ -39,7 +39,7 @@ def init_db():
             updated_at TEXT NOT NULL
         );
         """)
-        
+
         # 2. Student Reference Images & Embeddings Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS student_images (
@@ -53,7 +53,7 @@ def init_db():
             FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
         );
         """)
-        
+
         # 3. Attendance Sessions Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS attendance_sessions (
@@ -72,7 +72,7 @@ def init_db():
             notes TEXT
         );
         """)
-        
+
         # 4. Attendance Records Table (Per Student Per Session)
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS attendance_records (
@@ -87,7 +87,7 @@ def init_db():
             FOREIGN KEY(student_id) REFERENCES students(id) ON DELETE CASCADE
         );
         """)
-        
+
         # 5. Unknown Detections Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS unknown_detections (
@@ -102,7 +102,7 @@ def init_db():
             FOREIGN KEY(session_id) REFERENCES attendance_sessions(id) ON DELETE CASCADE
         );
         """)
-        
+
         # 6. Persistent System Settings Table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS system_settings (
@@ -110,14 +110,14 @@ def init_db():
             value TEXT NOT NULL
         );
         """)
-        
+
         # Seed default settings if not exists
         for key, val in settings.model_dump().items():
             cursor.execute(
                 "INSERT OR IGNORE INTO system_settings (key, value) VALUES (?, ?);",
                 (key, json.dumps(val))
             )
-        
+
         conn.commit()
 
 
@@ -178,7 +178,7 @@ def get_all_students(include_archived: bool = False) -> List[Dict[str, Any]]:
     if not include_archived:
         query += " WHERE s.status = 'active'"
     query += " GROUP BY s.id ORDER BY s.name ASC;"
-    
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(query)
@@ -194,7 +194,7 @@ def get_student_by_id(student_id: int) -> Optional[Dict[str, Any]]:
         student = cursor.fetchone()
         if not student:
             return None
-        
+
         student_dict = dict(student)
         cursor.execute(
             "SELECT id, file_path, face_quality, is_primary, created_at FROM student_images WHERE student_id = ? ORDER BY is_primary DESC, id ASC;",
@@ -215,7 +215,7 @@ def update_student(
     now = datetime.now().isoformat()
     fields = []
     params = []
-    
+
     if name is not None:
         fields.append("name = ?")
         params.append(name.strip())
@@ -228,14 +228,14 @@ def update_student(
     if has_consent is not None:
         fields.append("has_consent = ?")
         params.append(1 if has_consent else 0)
-        
+
     if not fields:
         return False
-        
+
     fields.append("updated_at = ?")
     params.append(now)
     params.append(student_id)
-    
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(f"UPDATE students SET {', '.join(fields)} WHERE id = ?;", params)
@@ -257,7 +257,7 @@ def delete_student(student_id: int) -> bool:
                     p.unlink()
                 except OSError:
                     pass
-        
+
         cursor.execute("DELETE FROM students WHERE id = ?;", (student_id,))
         conn.commit()
         return cursor.rowcount > 0
@@ -277,7 +277,7 @@ def add_student_image(
         cursor = conn.cursor()
         if is_primary:
             cursor.execute("UPDATE student_images SET is_primary = 0 WHERE student_id = ?;", (student_id,))
-        
+
         cursor.execute(
             """
             INSERT INTO student_images (student_id, file_path, embedding, face_quality, is_primary, created_at)
@@ -331,7 +331,7 @@ def get_all_student_embeddings() -> Dict[int, Dict[str, Any]]:
             ORDER BY s.id ASC, img.is_primary DESC;
         """)
         rows = cursor.fetchall()
-        
+
     gallery: Dict[int, Dict[str, Any]] = {}
     for r in rows:
         sid = r["id"]
@@ -345,7 +345,7 @@ def get_all_student_embeddings() -> Dict[int, Dict[str, Any]]:
                 "mean_embedding": None
             }
         gallery[sid]["embeddings"].append(emb)
-        
+
     # Compute normalized mean vector for each student
     for sid, data in gallery.items():
         if data["embeddings"]:
@@ -355,7 +355,7 @@ def get_all_student_embeddings() -> Dict[int, Dict[str, Any]]:
             if norm > 1e-6:
                 mean_vec = mean_vec / norm
             data["mean_embedding"] = mean_vec
-            
+
     return gallery
 
 
@@ -378,7 +378,7 @@ def save_attendance_session(
     """Stores full classroom attendance evaluation session and detailed records."""
     now = datetime.now().isoformat()
     total_detected = len(present_records) + len(uncertain_records) + len(unknown_detections)
-    
+
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
@@ -398,7 +398,7 @@ def save_attendance_session(
             )
         )
         session_id = cursor.lastrowid
-        
+
         # Save Present records
         for rec in present_records:
             cursor.execute(
@@ -408,7 +408,7 @@ def save_attendance_session(
                 """,
                 (session_id, rec["student_id"], rec.get("confidence", 0.0), json.dumps(rec.get("bbox", [])), rec.get("reason", "Confident Match"))
             )
-            
+
         # Save Absent records
         for rec in absent_records:
             cursor.execute(
@@ -418,7 +418,7 @@ def save_attendance_session(
                 """,
                 (session_id, rec["student_id"], "Not detected in classroom image")
             )
-            
+
         # Save Uncertain records
         for rec in uncertain_records:
             cursor.execute(
@@ -428,7 +428,7 @@ def save_attendance_session(
                 """,
                 (session_id, rec["student_id"], rec.get("confidence", 0.0), json.dumps(rec.get("bbox", [])), rec.get("reason", "Low confidence / ambiguity"))
             )
-            
+
         # Save Unknown detections
         for unk in unknown_detections:
             cursor.execute(
@@ -446,7 +446,7 @@ def save_attendance_session(
                     unk.get("crop_path", "")
                 )
             )
-            
+
         conn.commit()
         return session_id
 
@@ -473,9 +473,9 @@ def get_session_detail(session_id: int) -> Optional[Dict[str, Any]]:
         session = cursor.fetchone()
         if not session:
             return None
-        
+
         detail = dict(session)
-        
+
         # Load attendance records
         cursor.execute("""
             SELECT ar.id, ar.student_id, ar.status, ar.confidence, ar.bbox_json, ar.reason,
@@ -486,7 +486,7 @@ def get_session_detail(session_id: int) -> Optional[Dict[str, Any]]:
             ORDER BY ar.status ASC, s.name ASC;
         """, (session_id,))
         detail["records"] = [dict(r) for r in cursor.fetchall()]
-        
+
         # Load unknown detections
         cursor.execute("""
             SELECT id, face_index, bbox_json, best_similarity, best_candidate_name, reason, crop_path
@@ -495,7 +495,7 @@ def get_session_detail(session_id: int) -> Optional[Dict[str, Any]]:
             ORDER BY face_index ASC;
         """, (session_id,))
         detail["unknowns"] = [dict(u) for u in cursor.fetchall()]
-        
+
         return detail
 
 
@@ -514,7 +514,7 @@ def delete_session(session_id: int) -> bool:
                             p.unlink()
                         except OSError:
                             pass
-            
+
             cursor.execute("SELECT crop_path FROM unknown_detections WHERE session_id = ?;", (session_id,))
             for unk in cursor.fetchall():
                 if unk["crop_path"]:
@@ -524,7 +524,7 @@ def delete_session(session_id: int) -> bool:
                             p.unlink()
                         except OSError:
                             pass
-                            
+
             cursor.execute("DELETE FROM attendance_sessions WHERE id = ?;", (session_id,))
             conn.commit()
             return True
