@@ -31,7 +31,7 @@ def read_settings():
     current = get_system_settings()
     available_providers = onnxruntime.get_available_providers()
     gpu_active = any("CUDA" in p or "DirectML" in p or "Tensorrt" in p for p in available_providers)
-    
+
     return {
         "settings": current,
         "hardware": {
@@ -68,17 +68,17 @@ def modify_settings(payload: SettingsUpdatePayload):
     for k, v in payload.model_dump().items():
         if v is not None:
             updates[k] = v
-            
+
     if not updates:
         raise HTTPException(status_code=400, detail="No parameters provided for update")
-        
+
     update_system_settings(updates)
-    
+
     # Update in-memory settings
     for k, v in updates.items():
         if hasattr(settings, k):
             setattr(settings, k, v)
-            
+
     return {
         "message": "Settings updated successfully",
         "updated": updates
